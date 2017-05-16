@@ -96,16 +96,75 @@ def create_network(clients, name, subnet, gateway, parent, ip_range=None):
             log.exception("--> Fail.")
 
 
+def remove_network(clients, name, *args, **kwargs):
+    for client in clients:
+        log.info('--> Removing network %s from host %s' % (name, client.hostname))
+        try:
+            net_id = client.inspect_network(name).get('Id')
+            client.remove_network(net_id)
+        except APIError as e:
+            if e.status_code == 404:
+                log.error('--> Network %s not found on host %s' % (name, client.hostname))
+                return
+            log.error('--> Docker APIError: %s' % e)
+        except Exception:
+            log.exception("--> Fail.")
+
+
 def connect_service(clients, name, network, ip_pool=None):
     log.info(json.dumps({
         'Service': name,
         'Network': network,
         'IP Pool': ip_pool,
     }, indent=2))
-    pool = set(ip_pool_iter(ip_pool)) - collect_used_ips(clients)
-    if not pool:
-        log.error('--> No avaliable ip in ip pool, abort.')
-        return
+    pool = set()
+    if ip_pool:
+        pool = set(ip_pool_iter(ip_pool)) - collect_used_ips(clients)
+        if not pool:
+            log.error('--> No avaliable ip in ip pool, abort.')
+            return
+    tasks = get_service_running_tasks(name)
+    hostnames = []
+    containers_host_map = {}
+    for task in tasks:
+        node_id = task.get('NodeID')
+        hostname = get_node_id_hostname_map()[node_id]
+        hostnames.append(hostname)
+        containers_host_map.setdefault(hostname, []) \
+            .append(task.get('Status', {}).get('ContainerStatus', {}).get('ContainerID'))
+
+    def _connect(client, container_id, network, ip=None):
+        log.info("--> Connecting container %s to MacVLan %s on host %s with ip %s..."
+                 % (container_id[:8], network, client.hostname, ip or 'AUTO'))
+        try:
+            net_id = client.inspect_network(network).get('Id')
+            client.connect_container_to_network(container_id, net_id, ipv4_address=ip)
+            return True
+        except APIError as e:
+            if e.status_code == 404:
+                log.error('--> Network %s not found on host %s' % (network, client.hostname))
+                raise
+            log.error('--> Docker APIError: %s' % e)
+        except Exception:
+            log.exception("--> Fail.")
+
+    for client in clients:
+        if not client.hostname in hostnames:
+            continue
+        for container_id in containers_host_map[client.hostname]:
+            if pool:
+                while pool:
+                    try:
+                        if _connect(client, container_id, network, str(pool.pop())):
+                            break
+                    except APIError as e:
+                        if e.status_code == 404:
+                            break
+            if not pool:
+                _connect(client, container_id, network)
+
+
+def disconnect_service(clients, name, network, *args, **kwargs):
     tasks = get_service_running_tasks(name)
     hostnames = []
     containers_host_map = {}
@@ -119,24 +178,34 @@ def connect_service(clients, name, network, ip_pool=None):
     for client in clients:
         if not client.hostname in hostnames:
             continue
-        net_id = client.inspect_network(network).get('Id')
         for container_id in containers_host_map[client.hostname]:
-            for ip in pool:
-                log.info("--> Connecting container %s to MacVLan %s on host %s with ip %s..."
-                         % (container_id, network, client.hostname, ip))
-                try:
-                    client.connect_container_to_network(container_id, net_id, ipv4_address=str(ip))
-                    break
-                except APIError as e:
+            try:
+                net_id = client.inspect_network(network).get('Id')
+            except APIError as e:
+                if e.status_code == 404:
+                    log.error('--> Network %s not found on host %s' % (network, client.hostname))
+                else:
                     log.error('--> Docker APIError: %s' % e)
-                except Exception:
-                    log.exception("--> Fail.")
+                break
+            log.info("--> Disconnecting container %s from MacVLan %s on host %s..."
+                     % (container_id[:8], network, client.hostname))
+            try:
+                client.disconnect_container_from_network(container_id, net_id)
+                return True
+            except APIError as e:
+                log.error('--> Docker APIError: %s' % e)
+            except Exception:
+                log.exception("--> Fail.")
 
 
 def main():
-    p = argparse.ArgumentParser(description="Script to Create MacVLan, Bind Network to Service <For SPD Bank>")
+    p = argparse.ArgumentParser(
+        description="Script to Create MacVLan, Bind Network to each container in Service <For SPD Bank>")
     p.add_argument('-f', '--config-file', dest='conf_path', type=str,
                    help="config file location, default: ./conf.json")
+    p.add_argument('-d', '--disconnect', dest='disconnect', action='store_true',
+                   help="Disconnect each container in service from network")
+    p.add_argument('-r', '--remove-networks', dest='remove', action='store_true', help="Remove networks from each host")
     p.add_argument('-v', '--version', action='version', version=__version__)
     arg = p.parse_args()
     check_is_manager()
@@ -147,14 +216,26 @@ def main():
     node_clients = get_node_clients(username, password)
     networks = config.get('networks', [])
     services = config.get('services', [])
-    for network in networks:
-        log.info("Creating network %s..." % network.get('name'))
-        create_network(clients=node_clients, **network)
-        log.info('done.')
-    for service in services:
-        log.info("Connecting service %s to network %s..." % (service.get('name'), service.get('network')))
-        connect_service(clients=node_clients, **service)
-        log.info('done.')
+    if not (arg.disconnect or arg.remove):
+        for network in networks:
+            log.info("Creating network %s..." % network.get('name'))
+            create_network(clients=node_clients, **network)
+            log.info('Creating network done.')
+        for service in services:
+            log.info("Connecting service %s to network %s..." % (service.get('name'), service.get('network')))
+            connect_service(clients=node_clients, **service)
+            log.info('Connecting service done.')
+    else:
+        if arg.remove:
+            for service in services:
+                log.info("Disconnect service %s from network %s..." % (service.get('name'), service.get('network')))
+                disconnect_service(clients=node_clients, **service)
+                log.info('Disconnect service done.\n')
+        if arg.disconnect:
+            for network in networks:
+                log.info("Removing network %s..." % network.get('name'))
+                remove_network(clients=node_clients, **network)
+                log.info('Removing network done.\n')
 
 
 if __name__ == '__main__':
