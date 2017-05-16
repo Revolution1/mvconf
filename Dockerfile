@@ -8,5 +8,3 @@ RUN pip install --no-cache-dir pyinstaller -i https://pypi.tuna.tsinghua.edu.cn/
 ADD requirements.pip /root/
 
 RUN pip install --no-cache-dir -r requirements.pip -i https://pypi.tuna.tsinghua.edu.cn/simple
-
-CMD pyinstaller -F /root/src/mvconf.py && cp /root/dist/* /root/bin/

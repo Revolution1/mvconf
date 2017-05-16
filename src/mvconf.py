@@ -6,6 +6,10 @@ import logging
 import sys
 from os import path
 
+__version__ = '0.2.0'
+SOURCE_ROOT = path.abspath(path.dirname(__file__))
+sys.path.append(SOURCE_ROOT)
+
 import docker
 import docker.types
 from docker.errors import APIError
@@ -14,10 +18,6 @@ from ipaddress import IPv4Interface
 
 from docker_client import docker_client, get_node_clients
 from utils import memoize, ip_pool_iter
-
-__version__ = '0.2.0'
-SOURCE_ROOT = path.abspath(path.dirname(__file__))
-sys.path.append(SOURCE_ROOT)
 
 log = logging.getLogger('mvconf')
 handler = logging.StreamHandler()
