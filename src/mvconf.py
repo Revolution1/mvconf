@@ -191,7 +191,6 @@ def disconnect_service(clients, name, network, *args, **kwargs):
                      % (container_id[:8], network, client.hostname))
             try:
                 client.disconnect_container_from_network(container_id, net_id)
-                return True
             except APIError as e:
                 log.error('--> Docker APIError: %s' % e)
             except Exception:
@@ -226,12 +225,12 @@ def main():
             connect_service(clients=node_clients, **service)
             log.info('Connecting service done.')
     else:
-        if arg.remove:
+        if arg.disconnect:
             for service in services:
                 log.info("Disconnect service %s from network %s..." % (service.get('name'), service.get('network')))
                 disconnect_service(clients=node_clients, **service)
                 log.info('Disconnect service done.\n')
-        if arg.disconnect:
+        if arg.remove:
             for network in networks:
                 log.info("Removing network %s..." % network.get('name'))
                 remove_network(clients=node_clients, **network)
