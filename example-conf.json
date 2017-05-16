@@ -1,0 +1,26 @@
+{
+  "networks": [
+    {
+      "name": "macvlan",
+      "subnet": "192.168.8.122/25",
+      "gateway": "192.168.8.1",
+      "parent": "eth1",
+      "ip_range": "192.168.8.122/25"
+    }
+  ],
+  "services": [
+    {
+      "name": "2048",
+      "network": "macvlan",
+      "ip_pool": [
+        "192.168.8.136",
+        "192.168.8.137-192.168.8.139",
+        "192.168.8.139-192.168.8.141"
+      ]
+    }
+  ],
+  "auth": {
+    "username": "admin",
+    "password": "admin"
+  }
+}
