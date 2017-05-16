@@ -66,7 +66,9 @@ def check_config(conf_path):
 
 
 def get_service_running_tasks(name):
-    tasks = docker_client().tasks(filters={'service': name})
+    c = docker_client()
+    c.inspect_service(name)
+    tasks = c.tasks(filters={'service': name})
     return [t for t in tasks if t.get('Status', {}).get('State') == 'running']
 
 
