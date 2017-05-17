@@ -55,7 +55,7 @@ def collect_used_ips(clients):
 def collect_macvlan_status(clients):
     containers = []
     for client in clients:
-        macvlans = [n for n in client.networks() if n.get('Driver') == 'macvlan']
+        macvlans = [n for n in client.networks() if n.get('Driver').lower() == 'macvlan']
         for mv in macvlans:
             net = client.inspect_network(mv.get('Id'))
             for cid, v in net.get('Containers', {}).items():
@@ -233,6 +233,7 @@ class DCEAuth(object):
 
     @classmethod
     def load_auth(cls, auth_path='~/.dce_auth'):
+        auth_path = os.path.expanduser(auth_path)
         if not os.path.isfile(auth_path):
             return
         with open(auth_path) as f:

@@ -58,7 +58,10 @@ def login(username, password, url):
     """
     Login to DCE and save auth to ~/.dce_auth
     """
-    DCEAuth.login(url, password, username).save()
+    auth = DCEAuth.login(url, password, username)
+    if auth:
+        auth.save()
+        print('Login success.')
 
 
 @mvconf.command()

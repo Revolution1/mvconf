@@ -5,11 +5,26 @@ from requests.packages import urllib3
 urllib3.disable_warnings()
 
 
+class DCEAPIError(Exception):
+    def __init__(self, code, message):
+        self.code = code
+        self.message = message
+
+    def __repr__(self):
+        return '<DCEAPIError>'
+
+    def __str__(self):
+        # return '{code} {message}'.format(message='Accessing DCE api error: %s' % self.message, code=self.code)
+        return self.message
+
+
 class DCEClient(requests.Session):
     def __init__(self, base_url=None,
                  username=None, password=None, timeout=5,
                  user_agent='DiskCleaner/DCE-Plugin'):
         super(DCEClient, self).__init__()
+        if not base_url.startswith('http'):
+            base_url = 'http://' + base_url
         if base_url.endswith('/'):
             base_url = base_url[:-1]
         self.base_url = base_url
@@ -28,9 +43,8 @@ class DCEClient(requests.Session):
             description = response.json()['message']
         except ValueError:
             description = response.content.strip()
-        cls = IOError
-        raise cls('{code}{message}'.format(message='Accessing DCE api error: %s' % description,
-                                           code=response.status_code))
+        cls = DCEAPIError
+        raise cls(code=response.status_code, message=description)
 
     def _raise_for_status(self, response):
         """Raises stored :class:`APIError`, if one occurred."""
