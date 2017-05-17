@@ -19,6 +19,7 @@
     }
   ],
   "auth": {
+    "url": "192.168.56.102",
     "username": "admin",
     "password": "admin"
   }

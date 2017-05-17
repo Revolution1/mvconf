@@ -7,7 +7,7 @@ urllib3.disable_warnings()
 
 class DCEClient(requests.Session):
     def __init__(self, base_url=None,
-                 username=None, password=None, timeout=60,
+                 username=None, password=None, timeout=5,
                  user_agent='DiskCleaner/DCE-Plugin'):
         super(DCEClient, self).__init__()
         if base_url.endswith('/'):
@@ -69,6 +69,9 @@ class DCEClient(requests.Session):
 
     def _url(self, path, *args, **kwargs):
         return '{0}{1}'.format(self.base_url, path.format(*args))
+
+    def ping(self):
+        return self._result(self._get(self._url('/api')))
 
     def nodes(self):
         return self._result(self._get(self._url('/nodes')), json=True)

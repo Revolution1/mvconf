@@ -28,10 +28,11 @@ DEFAULT_TIMEOUT_SECONDS = 180
 
 class DCEDockerClient(APIClient):
     def __init__(self, base_url=None, version=None,
-                 token=None, timeout=60, hostname='',
+                 token=None, timeout=5, hostname='',
                  user_agent='DiskCleaner/DCE-Plugin', tls=False, num_pools=25):
         super(DCEDockerClient, self).__init__()
         self._hostname = ''
+        self._address = ''
         if base_url.startswith('http+unix://'):
             self._custom_adapter = UnixAdapter(
                 base_url, timeout, pool_connections=num_pools
@@ -78,6 +79,12 @@ class DCEDockerClient(APIClient):
             self._hostname = self.info()['Name']
         return self._hostname
 
+    @property
+    def address(self):
+        if not self._address:
+            self._address = self.info()['Swarm']['NodeAddr']
+        return self._address
+
     def create_service_raw(self, service_spec, auth_header=None):
         headers = {}
         if auth_header:
@@ -122,7 +129,7 @@ def check_kv_store_configured(docker_address):
 
 def docker_client(base_url='http+unix://var/run/docker.sock', hostname='', timeout=DEFAULT_TIMEOUT_SECONDS, tls=False):
     if os.getenv('TEST'):
-        base_url =  'http://192.168.56.102:1234'
+        base_url = 'http://192.168.56.102:1234'
     global DOCKER_CLIENTS
 
     if not base_url in DOCKER_CLIENTS:
@@ -164,6 +171,7 @@ def get_dce_client(username=None, password=None, client=None):
     addr = c.info()['Swarm']['NodeAddr']
     _, port, ssl_port = detect_dce_ports(c)
     return DCEClient('http://%s:%s' % (addr, port), username=username, password=password)
+
 
 @memoize
 def get_node_clients(username, password, client=None):
