@@ -17,7 +17,7 @@ from dce_client import DCEClient
 from docker_client import docker_client, get_dce_client, get_node_clients
 from utils import memoize, ip_pool_iter
 
-log = logging.getLogger('mvconf.handlers')
+log = logging.getLogger('main.handlers')
 
 __controller_client = None
 

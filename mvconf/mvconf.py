@@ -25,8 +25,8 @@ from utils import str2bool
 from version import version
 
 SOURCE_ROOT = path.abspath(path.dirname(__file__))
-
 sys.path.append(SOURCE_ROOT)
+
 debug = str2bool(os.getenv('DEBUG'), False)
 log_level = logging.DEBUG if debug else logging.INFO
 if debug:
@@ -35,7 +35,7 @@ else:
     __fmt = '[%(levelname)s] %(message)s'
 logging.basicConfig(level=log_level)
 coloredlogs.install(level=log_level, fmt=__fmt)
-log = logging.getLogger('mvconf.main')
+log = logging.getLogger('main.main')
 
 
 class AliasedGroup(click.Group):
@@ -52,19 +52,19 @@ class AliasedGroup(click.Group):
         ctx.fail('Too many matches: %s' % ', '.join(sorted(matches)))
 
 
-@click.group(cls=AliasedGroup)
+@click.group('main', cls=AliasedGroup)
 @click.option('-f', '--config-file', envvar='MV_CONF_FILE', default='./conf.json', type=click.Path(),
               help="config file location, default: ./conf.json")
 @click.version_option(version=version)
 @click.pass_context
-def mvconf(ctx, config_file):
+def main(ctx, config_file):
     """
     Create, Bind Network to each container in Service <For DCE SPD Bank>
     """
     ctx.obj = config_file
 
 
-@mvconf.command(add_help_option=True)
+@main.command(add_help_option=True)
 @click.option('-u', '--username', envvar='USERNAME', prompt=True, help='Username of DCE')
 @click.option('-p', '--password', envvar='PASSWORD', prompt=True, help='Password of DCE', hide_input=True)
 @click.argument('url')
@@ -78,7 +78,7 @@ def login(username, password, url):
         print('Login success.')
 
 
-@mvconf.command()
+@main.command()
 @click.pass_context
 def disconnect(ctx):
     """
@@ -95,7 +95,7 @@ def disconnect(ctx):
         log.info('Disconnect service done.\n')
 
 
-@mvconf.command()
+@main.command()
 @click.pass_context
 def rm(ctx):
     """
@@ -113,7 +113,7 @@ def rm(ctx):
         log.info('Removing network done.\n')
 
 
-@mvconf.command()
+@main.command()
 @click.pass_context
 def uningress(ctx):
     """
@@ -130,7 +130,7 @@ def uningress(ctx):
         log.info('Disconnect ingress done.\n')
 
 
-@mvconf.command()
+@main.command()
 @click.pass_context
 def reingress(ctx):
     """
@@ -147,7 +147,7 @@ def reingress(ctx):
         log.info('Reconnect ingress done.\n')
 
 
-@mvconf.command()
+@main.command()
 @click.pass_context
 def up(ctx):
     """
@@ -169,7 +169,7 @@ def up(ctx):
         log.info('Connecting service done.')
 
 
-@mvconf.command()
+@main.command()
 @click.pass_context
 def down(ctx):
     """
@@ -179,7 +179,7 @@ def down(ctx):
     ctx.forward(rm)
 
 
-@mvconf.command()
+@main.command()
 @click.pass_context
 def config(ctx):
     """
@@ -191,7 +191,7 @@ def config(ctx):
     print json.dumps(config, indent=2)
 
 
-@mvconf.command()
+@main.command()
 @click.option('--trunc/--no-trunc', default=True, help="Whether to truncate output")
 @click.option('--sort', help="Field to sort by, if has multiple fields separated by comma like 'host_ip,hostname'")
 @click.option('--field', help="Field to display, if has multiple fields separated by comma like 'host_ip,hostname'")
@@ -242,4 +242,4 @@ def status(ctx, trunc, sort, field):
 
 
 if __name__ == '__main__':
-    mvconf()
+    main()

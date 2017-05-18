@@ -1,55 +1,28 @@
-# MacVLan Configuration Script
+# MACVLAN 配置工具（mvconf）使用说明
 
-## Usage
 
-> Please run this script on manager node.
+## 1. 简介
+
+mvconf 是一个命令行工具，旨在帮助用户方便的配置 DCE 集群上服务的 MACVLAN。
+
+> mvconf 不提供监控功能，如果想要更完整的体验请使用 DCE 静态 IP 模块。
+
+
+## 2. 安装
+
+### 从源码安装
 
 ```
-usage: mvconf.py [-h] [-f CONF_PATH] [-d] [-r] [-v]
+cd mvconf
+pip install -r requirements.pip
 
-Script to Create MacVLan, Bind Network to each container in Service <For SPD
-Bank>
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -f CONF_PATH, --config-file CONF_PATH
-                        config file location, default: ./conf.json
-  -d, --disconnect      Disconnect each container in service from network
-  -r, --remove-networks
-                        Remove networks from each host
-  -v, --version         show program's version number and exit
 
 ```
 
-## conf.json
 
-```json
-{
-  "networks": [         // optional, create macvlan network on each node
-    {
-      "name": "macvlan",
-      "subnet": "192.168.8.122/25",
-      "gateway": "192.168.8.1",
-      "parent": "enp2s0f0.334",
-      "ip_range": "192.168.8.122/25"    // optional
-    }
-  ],
-  "services": [
-    {
-      "name": "2048",
-      "network": "macvlan",
-      "ip_pool": [                      // optional but recommended
-        "192.168.8.136",
-        "192.168.8.137-192.168.8.139",
-        "192.168.8.139-192.168.8.141"
-      ]
-    }
-  ],
-  "auth": {
-    "username": "admin",
-    "password": "admin"
-  }
-}
-```
+
+## 3. 快速开始
+
+
 
 
