@@ -192,11 +192,11 @@ def config(ctx):
 
 
 @mvconf.command()
-@click.option('--trunc/--no-trunc', default=True, help="Do not truncate output")
-@click.option('--sort', help="Field to sort by, like 'host_ip' for 'HOST IP'")
-@click.option('--fields', help="Fields to display, separated by comma like 'host_ip,hostname'")
+@click.option('--trunc/--no-trunc', default=True, help="Whether to truncate output")
+@click.option('--sort', help="Field to sort by, if has multiple fields separated by comma like 'host_ip,hostname'")
+@click.option('--field', help="Field to display, if has multiple fields separated by comma like 'host_ip,hostname'")
 @click.pass_context
-def status(ctx, trunc, sort, fields):
+def status(ctx, trunc, sort, field):
     """
     Show macvlan status.
     """
@@ -219,15 +219,17 @@ def status(ctx, trunc, sort, fields):
     if trunc:
         columns = [[i[:20] for i in c] for c in columns]
     if sort:
+        sorts = [f.replace('_', ' ').replace("'", '').replace('"', '').upper() for f in sort.split(',')]
         keys = header_map.keys()
-        key = sort.replace('_', ' ').upper()
-        if not key in keys:
-            log.error("No such field as '%s'" % key)
-            sys.exit(1)
-        index = keys.index(key)
-        columns = sorted(columns, key=lambda c: c[index])
-    if fields:
-        fields = [f.replace('_', ' ').replace("'", '').replace('"', '').upper() for f in fields.split(',')]
+        for key in sorts:
+            if not key in keys:
+                log.error("No such field as '%s'" % key)
+                sys.exit(1)
+        for key in sorts:
+            index = keys.index(key)
+            columns = sorted(columns, key=lambda c: c[index])
+    if field:
+        fields = [f.replace('_', ' ').replace("'", '').replace('"', '').upper() for f in field.split(',')]
         keys = header_map.keys()
         for f in fields:
             if not f in keys:
