@@ -15,6 +15,7 @@ from handlers import check_config
 from handlers import collect_macvlan_status
 from handlers import connect_service
 from handlers import create_network
+from handlers import disconnect_ingress
 from handlers import disconnect_service
 from handlers import get_config
 from handlers import get_docker_client_auth
@@ -71,7 +72,7 @@ def login(username, password, url):
     """
     Login to DCE and save auth to ~/.dce_auth
     """
-    auth = DCEAuth.login(url, password, username)
+    auth = DCEAuth.login(url, username, password)
     if auth:
         auth.save()
         print('Login success.')
@@ -114,6 +115,23 @@ def rm(ctx):
 
 @mvconf.command()
 @click.pass_context
+def uningress(ctx):
+    """
+    Disconnect containers from ingress.
+    """
+    client, auth = get_docker_client_auth(ctx.obj)
+    config = get_config(ctx.obj)
+    check_config(config)
+    services = config.get('services', [])
+    node_clients = get_node_clients(auth.username, auth.password, client)
+    for service in services:
+        log.info("Disconnect service '%s' from network 'ingress'..." % service.get('name'))
+        disconnect_ingress(clients=node_clients, **service)
+        log.info('Disconnect ingress done.\n')
+
+
+@mvconf.command()
+@click.pass_context
 def reingress(ctx):
     """
     Reconnect containers to ingress.
@@ -130,9 +148,8 @@ def reingress(ctx):
 
 
 @mvconf.command()
-@click.option('--uningress', 'uningress', flag_value=True, help="Disconnect 'ingress' network")
 @click.pass_context
-def up(ctx, uningress):
+def up(ctx):
     """
     Create networks and connect service to it.
     """
@@ -148,7 +165,7 @@ def up(ctx, uningress):
         log.info('Creating network done.')
     for service in services:
         log.info("Connecting service '%s' to network '%s'..." % (service.get('name'), service.get('network')))
-        connect_service(clients=node_clients, uningress=uningress, **service)
+        connect_service(clients=node_clients, **service)
         log.info('Connecting service done.')
 
 
@@ -160,7 +177,6 @@ def down(ctx):
     """
     ctx.forward(disconnect)
     ctx.forward(rm)
-    ctx.forward(reingress)
 
 
 @mvconf.command()

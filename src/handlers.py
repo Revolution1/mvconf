@@ -134,7 +134,7 @@ def get_net_id(client, network):
     return client.inspect_network(network).get('Id')
 
 
-def connect_service(clients, name, network, ip_pool=None, uningress=False):
+def connect_service(clients, name, network, ip_pool=None):
     log.info(json.dumps({
         'Service': name,
         'Network': network,
@@ -156,7 +156,7 @@ def connect_service(clients, name, network, ip_pool=None, uningress=False):
         containers_host_map.setdefault(hostname, []) \
             .append(task.get('Status', {}).get('ContainerStatus', {}).get('ContainerID'))
 
-    def _connect(client, container_id, network, ip=None, uningress=False):
+    def _connect(client, container_id, network, ip=None):
         log.info("--> Connecting container '%s' to MACVLAN '%s' on host '%s' with ip '%s'..."
                  % (container_id[:8], network, client.hostname, ip or 'AUTO'))
         try:
@@ -174,21 +174,6 @@ def connect_service(clients, name, network, ip_pool=None, uningress=False):
         except Exception:
             log.exception("--> Fail.")
 
-        if uningress:
-            log.info("--> Disonnecting container '%s' from 'ingress' on host '%s'..."
-                     % (container_id[:8], client.hostname))
-            try:
-                net_id = get_net_id(client, 'ingress')
-                client.disconnect_container_from_network(container_id, net_id)
-                return True
-            except APIError as e:
-                if e.status_code == 404:
-                    log.error("--> Network ingress not found on host '%s'" % client.hostname)
-                    raise NextContainer
-                log.error("--> Docker APIError: %s" % e)
-            except Exception:
-                log.exception("--> Fail.")
-
     for client in clients:
         if not client.hostname in hostnames:
             continue
@@ -199,13 +184,42 @@ def connect_service(clients, name, network, ip_pool=None, uningress=False):
                 while pool:
                     _ip = pool.pop()
                     try:
-                        if _connect(client, container_id, network, str(_ip), uningress=uningress):
+                        if _connect(client, container_id, network, str(_ip)):
                             break
                     except NextContainer:
                         pool.add(_ip)
                         break
             else:
-                _connect(client, container_id, network, uningress=uningress)
+                _connect(client, container_id, network)
+
+
+def disconnect_ingress(clients, name, *args, **kwargs):
+    tasks = get_service_running_tasks(name, get_manager_client(clients))
+    hostnames = []
+    containers_host_map = {}
+    for task in tasks:
+        node_id = task.get('NodeID')
+        hostname = get_node_id_hostname_map(get_manager_client(clients))[node_id]
+        hostnames.append(hostname)
+        containers_host_map.setdefault(hostname, []) \
+            .append(task.get('Status', {}).get('ContainerStatus', {}).get('ContainerID'))
+
+    for client in clients:
+        if not client.hostname in hostnames:
+            continue
+        for container_id in containers_host_map[client.hostname]:
+            log.info("--> Disonnecting container '%s' from 'ingress' on host '%s'..."
+                     % (container_id[:8], client.hostname))
+            try:
+                net_id = get_net_id(client, 'ingress')
+                client.disconnect_container_from_network(container_id, net_id)
+            except APIError as e:
+                if e.status_code == 404:
+                    log.error("--> Network ingress not found on host '%s'" % client.hostname)
+                    continue
+                log.error("--> Docker APIError: %s" % e)
+            except Exception:
+                log.exception("--> Fail.")
 
 
 def disconnect_service(clients, name, network, *args, **kwargs):
@@ -262,7 +276,6 @@ def reconnect_ingress(clients, name, *args, **kwargs):
             try:
                 net_id = get_net_id(client, network)
                 client.connect_container_to_network(container_id, net_id)
-                return True
             except APIError as e:
                 if e.status_code == 404:
                     log.error("--> Network %s not found on host '%s'" % (network, client.hostname))
@@ -291,7 +304,7 @@ class DCEAuth(object):
         with open(auth_path) as f:
             url, auth = json.load(f).items()[0]
             username, password = base64.b64decode(auth).split(':')
-            return cls(auth_path, url, username, password)
+            return cls(url, username, password, auth_path)
 
     @classmethod
     def login(cls, url, username, password, auth_path='~/.dce_auth'):
@@ -306,7 +319,10 @@ class DCEAuth(object):
         return DCEClient(self.url, self.username, self.password)
 
     def docker_client(self):
-        return self.dce_client().docker_client(urlparse(self.url).netloc.split(':')[0])
+        url = self.url
+        if not url.startswith('http'):
+            url = 'http://' + url
+        return self.dce_client().docker_client(urlparse(url).netloc.split(':')[0])
 
     def save(self):
         data = {
@@ -342,62 +358,63 @@ def get_config(conf_file, exit=True):
 
 def get_docker_client_auth(conf_file=None):
     local_auth = DCEAuth.load_auth()
+    log.debug("Try login DCE without auth, fail.")
+    log.debug("conf_file: %s" % conf_file)
+    config = get_config(conf_file, False) if conf_file else {}
+    log.debug("config: %s" % config)
+    auth = config.get('auth', {})
+    if not local_auth and not auth:
+        log.error(
+            "DCE Authenticate fail, please specify 'auth' in config file or use command '%s login'." % sys.argv[0])
+        sys.exit(1)
+    if auth:
+        # Try login DCE with config file
+        url = auth.get('url', 'auto')
+        username = auth.get('username')
+        password = auth.get('password')
+        log.debug("url: %s, username: %s, password: %s" % (url, username, password))
+        if url == 'auto':
+            c = docker_client()
+            try:
+                # Try login DCE with config file and auto detected url
+                cli = get_dce_client(username, password, c)
+                cli.nodes()
+                log.debug("Login DCE with config file and auto detected url success.")
+                log.debug(
+                    "Returning default docker client and Auth: (%s, %s, %s)" % (cli.base_url, username, password))
+                return c, DCEAuth(cli.base_url, username, password)
+            except Exception as e:
+                log.error('Auth from config file with auto-detect url fail: %s' % e)
+        else:
+            # Try login DCE with config file
+            try:
+                dce_auth = DCEAuth.login(url, username, password)
+                if dce_auth:
+                    log.debug('Login DCE with config file success.')
+                    log.debug("Returning auth's docker client and Auth: (%s, %s, %s)" % (url, username, password))
+                    if not url.startswith('http'):
+                        url = 'http://' + url
+                    return dce_auth.dce_client().docker_client(urlparse(url).netloc.split(':')[0]), dce_auth
+            except Exception as e:
+                log.error('Auth from config file fail: %s' % e)
+    if local_auth:
+        try:
+            log.debug('Login DCE with local auth success.')
+            log.debug("Returning auth's docker client and Auth: (%s, %s, %s)" % (
+                local_auth.url, local_auth.username, local_auth.password))
+            return local_auth.docker_client(), local_auth
+        except Exception as e:
+            log.error('Auth from with local auth fail: %s' % e)
     try:
         # Try login DCE without auth
-        # TODO: url first
         c = get_dce_client()
         c.nodes()
         log.debug("Returning default docker client and Auth: (None, None, None)")
         return docker_client(), DCEAuth()
     except Exception:
-        log.debug("Try login DCE without auth, fail.")
-        log.debug("conf_file: %s" % conf_file)
-        config = get_config(conf_file, False) if conf_file else {}
-        log.debug("config: %s" % config)
-        auth = config.get('auth', {})
-        if not local_auth and not auth:
-            log.error(
-                "DCE Authenticate fail, please specify 'auth' in config file or use command '%s login'." % sys.argv[0])
-            sys.exit(1)
-        if auth:
-            # Try login DCE with config file
-            url = auth.get('url', 'auto')
-            username = auth.get('username')
-            password = auth.get('password')
-            log.debug("url: %s, username: %s, password: %s" % (url, username, password))
-            if url == 'auto':
-                c = docker_client()
-                try:
-                    # Try login DCE with config file and auto detected url
-                    cli = get_dce_client(username, password, c)
-                    cli.nodes()
-                    log.debug("Login DCE with config file and auto detected url success.")
-                    log.debug(
-                        "Returning default docker client and Auth: (%s, %s, %s)" % (cli.base_url, username, password))
-                    return c, DCEAuth(cli.base_url, username, password)
-                except Exception as e:
-                    log.error('Auth from config file with auto-detect url fail: %s' % e)
-            else:
-                # Try login DCE with config file
-                try:
-                    dce_auth = DCEAuth.login(url, password, username)
-                    if dce_auth:
-                        log.debug('Login DCE with config file success.')
-                        log.debug("Returning auth's docker client and Auth: (%s, %s, %s)" % (url, username, password))
-                        if not url.startswith('http'):
-                            url = 'http://' + url
-                        return dce_auth.dce_client().docker_client(urlparse(url).netloc.split(':')[0]), dce_auth
-                except Exception as e:
-                    log.error('Auth from config file fail: %s' % e)
-        if local_auth:
-            try:
-                log.debug('Login DCE with local auth success.')
-                log.debug("Returning auth's docker client and Auth: (%s, %s, %s)" % (
-                    local_auth.url, local_auth.username, local_auth.password))
-                return local_auth.docker_client(), local_auth
-            except Exception as e:
-                log.error('Auth from with local auth fail: %s' % e)
-        return None, DCEAuth()
+        log.error(
+            "DCE Authenticate fail, please specify 'auth' in config file or use command '%s login'." % sys.argv[0])
+        sys.exit(1)
 
 
 if __name__ == '__main__':

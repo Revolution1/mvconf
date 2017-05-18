@@ -131,7 +131,7 @@ def check_kv_store_configured(docker_address):
 
 
 def docker_client(base_url='http+unix://var/run/docker.sock', hostname='', timeout=DEFAULT_TIMEOUT_SECONDS, tls=False):
-    if os.getenv('TEST'):
+    if os.getenv('TEST_DOCKER_CLIENT'):
         base_url = 'http://192.168.56.102:1234'
     global DOCKER_CLIENTS
 
