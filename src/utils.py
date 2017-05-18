@@ -50,6 +50,16 @@ def ip_pool_iter(conf):
         raise ValueError("ip pool configuration must be string or list/tuple")
 
 
+def str2bool(v, default):
+    if v is None:
+        return default
+    if v.lower() in ('yes', 'true', 't', '1'):
+        return True
+    if v.lower() in ('no', 'false', 'f', '0'):
+        return False
+    return default
+
+
 if __name__ == '__main__':
     print list(ip_pool_iter([
         "192.168.8.136",

@@ -7,6 +7,7 @@ import sys
 from os import path
 from urlparse import urlparse
 
+import coloredlogs
 import docker
 import docker.types
 from docker.errors import APIError
@@ -15,12 +16,14 @@ from ipaddress import IPv4Interface
 
 from dce_client import DCEClient
 from docker_client import docker_client, get_dce_client, get_node_clients
-from utils import memoize, ip_pool_iter
+from utils import memoize, ip_pool_iter, str2bool
 
+debug = str2bool(os.getenv('DEBUG'), False)
+log_level = logging.DEBUG if debug else logging.INFO
+
+logging.basicConfig(level=log_level)
+coloredlogs.install(level=log_level, fmt='[%(levelname)s] - (%(filename)s %(lineno)d): %(message)s')
 log = logging.getLogger('mvconf')
-handler = logging.StreamHandler()
-log.addHandler(handler)
-log.setLevel(logging.INFO)
 
 __controller_client = None
 
@@ -297,7 +300,9 @@ def get_docker_client_auth(conf_file=None):
         return docker_client(), DCEAuth()
     except Exception:
         log.debug("Try login DCE without auth, fail.")
+        log.debug("conf_file: %s" % conf_file)
         config = get_config(conf_file, False) if conf_file else {}
+        log.debug("config: %s" % config)
         auth = config.get('auth', {})
         if not local_auth and not auth:
             log.error(
@@ -306,28 +311,33 @@ def get_docker_client_auth(conf_file=None):
         if auth:
             # Try login DCE with config file
             url = auth.get('url', 'auto')
-            password = auth.get('password')
             username = auth.get('username')
+            password = auth.get('password')
+            log.debug("url: %s, username: %s, password: %s" % (url, username, password))
             if url == 'auto':
                 c = docker_client()
                 try:
                     # Try login DCE with config file and auto detected url
                     get_dce_client(username, password, c).nodes()
+                    log.debug("Login DCE with config file and auto detected url success.")
                     return c, DCEAuth(url, username, password)
                 except Exception as e:
                     log.error('Auth from config file with auto-detect url fail: %s' % e)
             else:
                 # Try login DCE with config file
-                if not url.startswith('http'):
-                    url = 'http://' + url
                 try:
                     dce_auth = DCEAuth.login(url, password, username)
                     if dce_auth:
+                        log.debug('Login DCE with config file success.')
                         return dce_auth.dce_client().docker_client(urlparse(url).netloc.split(':')[0]), dce_auth
                 except Exception as e:
                     log.error('Auth from config file fail: %s' % e)
         if local_auth:
-            return local_auth.docker_client(), local_auth
+            try:
+                log.debug('Login DCE with local auth success.')
+                return local_auth.docker_client(), local_auth
+            except Exception as e:
+                log.error('Auth from with local auth fail: %s' % e)
         return None, DCEAuth()
 
 
