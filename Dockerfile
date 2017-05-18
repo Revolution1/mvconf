@@ -1,4 +1,4 @@
-FROM python:2.7
+FROM daocloud.io/python:2.7
 
 WORKDIR /root/
 
