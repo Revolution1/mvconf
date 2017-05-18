@@ -57,7 +57,7 @@ def collect_macvlan_status(clients):
             net = client.inspect_network(mv.get('Id'))
             for cid, v in net.get('Containers', {}).items():
                 containers.append({
-                    'id': cid[:12],
+                    'id': cid,
                     'name': v.get('Name'),
                     'network_name': mv.get('Name'),
                     'service_name': '.'.join(v.get('Name').split('.')[:-2]),
@@ -114,7 +114,7 @@ def remove_network(clients, name, *args, **kwargs):
     for client in clients:
         log.info('--> Removing network %s from host %s' % (name, client.hostname))
         try:
-            net_id = client.inspect_network(name).get('Id')
+            net_id = get_net_id(client, name)
             client.remove_network(net_id)
         except APIError as e:
             if e.status_code == 404:
@@ -129,7 +129,12 @@ class NextContainer(Exception):
     pass
 
 
-def connect_service(clients, name, network, ip_pool=None):
+@memoize
+def get_net_id(client, network):
+    return client.inspect_network(network).get('Id')
+
+
+def connect_service(clients, name, network, ip_pool=None, uningress=False):
     log.info(json.dumps({
         'Service': name,
         'Network': network,
@@ -151,11 +156,11 @@ def connect_service(clients, name, network, ip_pool=None):
         containers_host_map.setdefault(hostname, []) \
             .append(task.get('Status', {}).get('ContainerStatus', {}).get('ContainerID'))
 
-    def _connect(client, container_id, network, ip=None):
+    def _connect(client, container_id, network, ip=None, uningress=False):
         log.info("--> Connecting container '%s' to MACVLAN '%s' on host '%s' with ip '%s'..."
                  % (container_id[:8], network, client.hostname, ip or 'AUTO'))
         try:
-            net_id = client.inspect_network(network).get('Id')
+            net_id = get_net_id(client, network)
             client.connect_container_to_network(container_id, net_id, ipv4_address=ip)
             return True
         except APIError as e:
@@ -169,6 +174,21 @@ def connect_service(clients, name, network, ip_pool=None):
         except Exception:
             log.exception("--> Fail.")
 
+        if uningress:
+            log.info("--> Disonnecting container '%s' from 'ingress' on host '%s'..."
+                     % (container_id[:8], client.hostname))
+            try:
+                net_id = get_net_id(client, 'ingress')
+                client.disconnect_container_from_network(container_id, net_id)
+                return True
+            except APIError as e:
+                if e.status_code == 404:
+                    log.error("--> Network ingress not found on host '%s'" % client.hostname)
+                    raise NextContainer
+                log.error("--> Docker APIError: %s" % e)
+            except Exception:
+                log.exception("--> Fail.")
+
     for client in clients:
         if not client.hostname in hostnames:
             continue
@@ -179,13 +199,13 @@ def connect_service(clients, name, network, ip_pool=None):
                 while pool:
                     _ip = pool.pop()
                     try:
-                        if _connect(client, container_id, network, str(_ip)):
+                        if _connect(client, container_id, network, str(_ip), uningress=uningress):
                             break
                     except NextContainer:
                         pool.add(_ip)
                         break
             else:
-                _connect(client, container_id, network)
+                _connect(client, container_id, network, uningress=uningress)
 
 
 def disconnect_service(clients, name, network, *args, **kwargs):
@@ -204,7 +224,7 @@ def disconnect_service(clients, name, network, *args, **kwargs):
             continue
         for container_id in containers_host_map[client.hostname]:
             try:
-                net_id = client.inspect_network(network).get('Id')
+                net_id = get_net_id(client, network)
             except APIError as e:
                 if e.status_code == 404:
                     log.error('--> Network %s not found on host %s' % (network, client.hostname))
@@ -217,6 +237,40 @@ def disconnect_service(clients, name, network, *args, **kwargs):
                 client.disconnect_container_from_network(container_id, net_id)
             except APIError as e:
                 log.error('--> Docker APIError: %s' % e)
+            except Exception:
+                log.exception("--> Fail.")
+
+
+def reconnect_ingress(clients, name, *args, **kwargs):
+    network = 'ingress'
+    tasks = get_service_running_tasks(name, get_manager_client(clients))
+    hostnames = []
+    containers_host_map = {}
+    for task in tasks:
+        node_id = task.get('NodeID')
+        hostname = get_node_id_hostname_map(get_manager_client(clients))[node_id]
+        hostnames.append(hostname)
+        containers_host_map.setdefault(hostname, []) \
+            .append(task.get('Status', {}).get('ContainerStatus', {}).get('ContainerID'))
+
+    for client in clients:
+        if not client.hostname in hostnames:
+            continue
+        for container_id in containers_host_map[client.hostname]:
+            log.info("--> Connecting container '%s' to '%s' on host '%s'..."
+                     % (container_id[:8], network, client.hostname))
+            try:
+                net_id = get_net_id(client, network)
+                client.connect_container_to_network(container_id, net_id)
+                return True
+            except APIError as e:
+                if e.status_code == 404:
+                    log.error("--> Network %s not found on host '%s'" % (network, client.hostname))
+                    continue
+                if e.status_code == 500 and re.search(r'already exists in network', e.explanation):
+                    log.info("--> Container '%s' already in network '%s'" % (container_id[:8], network))
+                    continue
+                log.error("--> Docker APIError: %s" % e)
             except Exception:
                 log.exception("--> Fail.")
 
@@ -246,7 +300,7 @@ class DCEAuth(object):
         except Exception as e:
             log.error("DCE login Fail: %s" % e)
             return
-        return cls(auth_path, url, username, password)
+        return cls(url, username, password, auth_path)
 
     def dce_client(self):
         return DCEClient(self.url, self.username, self.password)
@@ -290,6 +344,7 @@ def get_docker_client_auth(conf_file=None):
     local_auth = DCEAuth.load_auth()
     try:
         # Try login DCE without auth
+        # TODO: url first
         c = get_dce_client()
         c.nodes()
         log.debug("Returning default docker client and Auth: (None, None, None)")
@@ -329,6 +384,8 @@ def get_docker_client_auth(conf_file=None):
                     if dce_auth:
                         log.debug('Login DCE with config file success.')
                         log.debug("Returning auth's docker client and Auth: (%s, %s, %s)" % (url, username, password))
+                        if not url.startswith('http'):
+                            url = 'http://' + url
                         return dce_auth.dce_client().docker_client(urlparse(url).netloc.split(':')[0]), dce_auth
                 except Exception as e:
                     log.error('Auth from config file fail: %s' % e)

@@ -95,6 +95,9 @@ class DCEClient(requests.Session):
     def nodes(self):
         return self._result(self._get(self._url('/nodes')), json=True)
 
+    def info(self):
+        return self._result(self._get(self._url('/info')), json=True)
+
     def ip_map(self):
         return self._result(self._get(self._url('/api/nodes-utils/ip-map')), json=True)
 
