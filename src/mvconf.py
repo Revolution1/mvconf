@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 import json
+import logging
 import os
 import sys
 from collections import OrderedDict
 from os import path
 
 import click
+import coloredlogs
 
 from docker_client import get_node_clients
 from handlers import DCEAuth
@@ -16,12 +18,19 @@ from handlers import create_network
 from handlers import disconnect_service
 from handlers import get_config
 from handlers import get_docker_client_auth
-from handlers import log
 from handlers import remove_network
+from utils import str2bool
 from version import version
 
 SOURCE_ROOT = path.abspath(path.dirname(__file__))
+
 sys.path.append(SOURCE_ROOT)
+debug = str2bool(os.getenv('DEBUG'), False)
+log_level = logging.DEBUG if debug else logging.INFO
+
+logging.basicConfig(level=log_level)
+coloredlogs.install(level=log_level, fmt='[%(levelname)s] - %(name)s (%(filename)s %(funcName)s %(lineno)d): %(message)s')
+log = logging.getLogger('mvconf.main')
 
 
 class AliasedGroup(click.Group):

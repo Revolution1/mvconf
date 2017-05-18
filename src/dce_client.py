@@ -1,8 +1,12 @@
+import logging
+
 import requests
 from requests.auth import HTTPBasicAuth
 from requests.packages import urllib3
 
 urllib3.disable_warnings()
+
+log = logging.getLogger('DCEClient')
 
 
 class DCEAPIError(Exception):
@@ -33,6 +37,7 @@ class DCEClient(requests.Session):
         self.verify = False
         if username and password:
             self.auth = HTTPBasicAuth(username, password)
+        log.debug("New DCEClient instance of %s (%s, %s)" % (base_url, username, password))
 
     def create_api_error_from_http_exception(self, e):
         """

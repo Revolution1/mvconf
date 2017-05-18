@@ -1,4 +1,5 @@
 # encoding=utf-8
+import logging
 import os
 import re
 from functools import partial
@@ -24,6 +25,8 @@ urllib3.disable_warnings()
 SWARM_CLIENT = None
 DOCKER_CLIENTS = {}
 DEFAULT_TIMEOUT_SECONDS = 180
+
+log = logging.getLogger('DCEDockerClient')
 
 
 class DCEDockerClient(APIClient):
@@ -176,6 +179,7 @@ def get_dce_client(username=None, password=None, client=None):
 @memoize
 def get_node_clients(username, password, client=None):
     client = client or docker_client()
+    log.debug("Getting node clients with username: %s, password: %s, client: %s" % (username, password, client))
     controllers = [n['ManagerStatus']['Addr'] for n in client.nodes() if n['Spec']['Role'] == 'manager']
     addr = controllers[0].split(':')[0]
     _, port, ssl_port = detect_dce_ports(client)
