@@ -31,8 +31,8 @@ mvconf 可以在任何能访问到 DCE 控制器的机器上运行。
 
 在命令行执行 `mvconf --help` 可以看到简单的命令说明：
 
-```bash
-~# mvconf --help    
+```
+~ # mvconf --help    
 Usage: mvconf [OPTIONS] COMMAND [ARGS]...
 
   Create, Bind Network to each container in Service <For DCE SPD Bank>
@@ -59,7 +59,7 @@ Commands:
 使用参数 `mvconf 命令 --help` 可以看到命令的帮助，如：
 
 ```
-~# mvconf status --help
+~ # mvconf status --help
 Usage: mvconf status [OPTIONS]
 
   Show macvlan status.
@@ -88,12 +88,12 @@ mvconf 需要用到 DCE 管理员权限，在使用的时候我们有两种方�
 
 在配置文件中添加 `auth` 字段：
 
-```json
+```
 {
   "auth": {
     "url": "192.168.56.102",  // DCE 控制器 IP 地址
     "username": "admin",      // 管理员账号
-    "password": "admin"		  // 管理员密码
+    "password": "admin"       // 管理员密码
   }
 }
 ```
@@ -105,11 +105,11 @@ mvconf 对 MACVLAN 和服务的操作全部依赖于配置文件，配置文件�
 
 mvconf 默认会读取当前目录下的 `conf.json` 文件，也可使用 `-f 路径` 来指定配置文件路径。
 
-```json
+```
 {
   "networks": [                           // MACVLAN 网络配置
     {
-      "name": "macvlan",				  // 网络名称
+      "name": "macvlan",                  // 网络名称
       "subnet": "192.168.8.0/24",         // 网段
       "gateway": "192.168.8.1",           // 网关
       "parent": "eth1",                   // 绑定网卡
@@ -129,7 +129,7 @@ mvconf 默认会读取当前目录下的 `conf.json` 文件，也可使用 `-f �
   "auth": {
     "url": "192.168.56.102",              // DCE 控制器 IP 地址
     "username": "admin",                  // 管理员账号
-    "password": "admin"		              // 管理员密码
+    "password": "admin"                   // 管理员密码
   }
 }
 ```
