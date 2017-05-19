@@ -59,7 +59,7 @@ class AliasedGroup(click.Group):
 @click.pass_context
 def main(ctx, config_file):
     """
-    Create, Bind Network to each container in Service <For DCE SPD Bank>
+    MACVLAN configure tool for DaoCloud Enterprise
     """
     ctx.obj = config_file
 
